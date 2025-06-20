@@ -1,0 +1,39 @@
+﻿<Window x:Class="music_editer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="譜面エディター" Height="600" Width="800">
+    <DockPanel>
+        <!-- 上部コントロール -->
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="5">
+            <Button Content="音楽読み込み" Click="LoadMusic_Click" Margin="3"/>
+            <Button Content="再生" Click="Play_Click" Margin="3"/>
+            <Button Content="停止" Click="Stop_Click" Margin="3"/>
+            <Button Content="保存" Click="Save_Click" Margin="3"/>
+            <Button Content="読み込み" Click="Load_Click" Margin="3"/>
+
+            <TextBlock Text="BPM:" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Black"/>
+            <TextBox x:Name="BpmTextBox" Text="120" Width="50" Margin="3" VerticalAlignment="Center"/>
+
+            <Button Content="スキームの設定" Click="Scheme_Click" Margin="3"/>
+
+            <TextBlock x:Name="CurrentTimeText" Margin="10,0,0,0" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+
+        <!-- 譜面エリア -->
+        <Grid>
+            <!-- スクロール可能な譜面エリア -->
+            <ScrollViewer x:Name="CanvasScrollViewer" VerticalScrollBarVisibility="Visible">
+                <Canvas x:Name="NoteCanvas"
+                Width="500"
+                Height="4000"
+                Background="#111"
+                MouseDown="NoteCanvas_MouseDown"/>
+            </ScrollViewer>
+
+            <!-- 赤線描画用Canvas（常に中央に表示される） -->
+            <Canvas x:Name="RedLineCanvas"
+            Background="Transparent"
+            IsHitTestVisible="False" />
+        </Grid>
+    </DockPanel>
+</Window>
