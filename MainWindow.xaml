@@ -4,17 +4,17 @@
         Title="譜面エディター" Height="600" Width="800">
     <DockPanel>
         <!-- 上部コントロール -->
-        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="5">
-            <Button Content="音楽読み込み" Click="LoadMusic_Click" Margin="3"/>
-            <Button Content="再生" Click="Play_Click" Margin="3"/>
-            <Button Content="停止" Click="Stop_Click" Margin="3"/>
-            <Button Content="保存" Click="Save_Click" Margin="3"/>
-            <Button Content="読み込み" Click="Load_Click" Margin="3"/>
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Height="45" Width="790" Margin="5">
+            <Button Content="曲読み込み" FontSize="18" Click="LoadMusic_Click" Margin="5"/>
+            <Button Content="曲再生" FontSize="18" Click="Play_Click" Margin="5"/>
+            <Button Content="曲停止" FontSize="18" Click="Stop_Click" Margin="5"/>
+            <Button Content="譜面保存" FontSize="18" Click="Save_Click" Margin="5"/>
+            <Button Content="譜面読み込み" FontSize="18" Click="Load_Click" Margin="5"/>
 
-            <TextBlock Text="BPM:" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Black"/>
-            <TextBox x:Name="BpmTextBox" Text="120" Width="50" Margin="3" VerticalAlignment="Center"/>
+            <TextBlock Text="BPM:" FontSize="18" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Black"/>
+            <TextBox x:Name="BpmTextBox" Text="120" FontSize="18" Width="50" Margin="5" VerticalAlignment="Center" IsReadOnly="True"/>
 
-            <Button Content="スキームの設定" Click="Scheme_Click" Margin="3"/>
+            <Button Content="スキームの設定" FontSize="18" Click="Scheme_Click" Margin="5"/>
 
             <TextBlock x:Name="CurrentTimeText" Margin="10,0,0,0" Foreground="White" FontWeight="Bold"/>
         </StackPanel>
@@ -24,9 +24,9 @@
             <!-- スクロール可能な譜面エリア -->
             <ScrollViewer x:Name="CanvasScrollViewer" VerticalScrollBarVisibility="Visible">
                 <Canvas x:Name="NoteCanvas"
-                Width="500"
+                Width="480"
                 Height="4000"
-                Background="#111"
+                Background="Black"
                 MouseDown="NoteCanvas_MouseDown"/>
             </ScrollViewer>
 

@@ -1,0 +1,10 @@
+﻿<Window x:Class="music_editer.bpmSetting"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BPM設定" Height="250" Width="400" WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="10">
+        <Label Content="BPM:" FontSize="18" HorizontalAlignment="Left" Margin="69,0,0,0" VerticalAlignment="Center"/>
+        <TextBox x:Name="BpmInputTextBox" Text="120" FontSize="18" Width="100" HorizontalAlignment="Left" Margin="124,0,0,0" VerticalAlignment="Center" KeyDown="BpmInputTextBox_KeyDown"/>
+        <Button Content="設定" FontSize="18" Width="80" HorizontalAlignment="Left" Margin="239,0,0,0" VerticalAlignment="Center" Click="SetBpmButton_Click"/>
+    </Grid>
+</Window>
