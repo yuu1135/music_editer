@@ -88,7 +88,7 @@ namespace music_editer.Utils {
                             var json = reader.ReadToEnd();
                             string? path = JsonSerializer.Deserialize<string?>(json);
 
-                            string wavfile = Path.Combine(tempFolder, $"{DateTime.Now}.wav");
+                            string wavfile = Path.Combine(tempFolder, $"{DateTime.Now.ToString("yyyyMMddHHmmss")}.wav");
                             using (var audioReader = new AudioFileReader(path))
                             {
                                 WaveFileWriter.CreateWaveFile(wavfile, audioReader);

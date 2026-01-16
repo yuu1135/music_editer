@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>0.5.1</Version>
+    <Version>0.5.2.2</Version>
     <ApplicationIcon>favicon.ico</ApplicationIcon>
   </PropertyGroup>
 
