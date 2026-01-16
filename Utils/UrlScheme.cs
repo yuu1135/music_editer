@@ -45,24 +45,30 @@ namespace music_editer.Utils
         }
 
 
-        public static void StartProcessAsAdmin(string exePath, string arguments = "")
+        public static int StartProcessAsAdmin(string exePath, string arguments = "")
         {
+            ProcessStartInfo psi = new ProcessStartInfo
+            {
+                FileName = exePath,              // 起動したい実行ファイルのパス
+                Arguments = arguments,           // 必要なら引数も指定
+                UseShellExecute = true,          // Shellを使って起動
+                Verb = "runas"                   // 管理者権限で起動
+            };
+
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo
-                {
-                    FileName = exePath,              // 起動したい実行ファイルのパス
-                    Arguments = arguments,           // 必要なら引数も指定
-                    UseShellExecute = true,          // Shellを使って起動
-                    Verb = "runas"                   // 管理者権限で起動
-                };
 
-                Process.Start(psi);
+                using(Process proc = Process.Start(psi))
+                {
+                    proc.WaitForExit();
+                    return proc.ExitCode;
+                }
             }
             catch (Exception ex)
             {
                 // ユーザーが UAC をキャンセルした場合など
                 MessageBox.Show($"プロセスの起動に失敗しました: {ex.Message}");
+                return -1;
             }
 
         }

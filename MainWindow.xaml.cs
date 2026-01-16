@@ -15,9 +15,15 @@ using music_editer.Utils;
 using System.Windows.Input;
 using System.Threading;
 using System.Diagnostics;
+using music_editer.Api;
+using NAudio.Wave;
+using NAudio.Utils;
+using System.IO;
 
-namespace music_editer {
-    public partial class MainWindow : Window {
+namespace music_editer
+{
+    public partial class MainWindow : Window
+    {
         private List<Note> Notes = new();
         private MediaPlayer player;
         private string? music_file_path = null;
@@ -28,19 +34,36 @@ namespace music_editer {
 
         private double BPM => double.TryParse(BpmTextBox.Text, out var bpm) ? bpm : 120;
         private bool bpmSet = false;    // BPM設定済みかどうか
-        private const double PixelsPerBeat = 100;
+        private const double PixelsPerBeat = 400.0 / 4.0;
         private const int LaneWidth = 120;
-        
-        public MainWindow() {
+
+        private bool startFlag = false;
+        public string? filePath = null;
+
+        private bool isImport = false;  
+
+        public MainWindow()
+        {
             InitializeComponent();
 
-            renderTimer.Interval = TimeSpan.FromMilliseconds(16);
+            //renderTimer.Interval = TimeSpan.FromMilliseconds(16);
+            renderTimer.Interval = TimeSpan.FromMilliseconds(1);
             renderTimer.Tick += RenderTimer_Tick;
             KeyDown += MainWindow_KeyDown;
             //BpmTextBox.KeyDown += Bpmbox_KeyDown;
 
+            // ファイル項目にあるクリックのフック
+            NewProjectButton.Click += LoadMusic_Click;
+            SaveProjectButton.Click += SaveProjectButton_Click;
+            LoadProjectButton.Click += LoadProjectButton_Click;
+            importMSDFileButton.Click += ImportMSDFileButton_Click;
+            ExportMSDFileButton.Click += Save_Click;
+            ExitButton.Click += ExitButton_Click;
+            Loaded += MainWindow_Loaded;
+
             CompositionTarget.Rendering += (s, e) => {
-                if (isPlaying) {
+                if (isPlaying)
+                {
                     double currentTime = player.Position.TotalMilliseconds;
                     double y = TimeToY(currentTime); // Y時間読み出し
 
@@ -49,6 +72,126 @@ namespace music_editer {
                     //DrawNotes(CanvasScrollViewer.VerticalOffset);
                 }
             };
+        }
+
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (filePath != null)
+            {
+                double bpm;
+                try
+                {
+                    MyFileIO.LoadFromProject(filePath, out Notes, out bpm, out music_file_path);
+
+                    BpmTextBox.Text = bpm.ToString();
+                    if (!string.IsNullOrEmpty(music_file_path))
+                    {
+                        //すでに開いている音楽ファイルを解放
+                        if (player != null)
+                        {
+                            player.Close();
+                        }
+
+                        player = new();
+                        player.Open(new Uri(music_file_path));
+                        player.MediaOpened += (s, _) => {
+                            if (player.NaturalDuration.HasTimeSpan)
+                            {
+                                var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
+                                double canvasHeight = TimeToY(duration);
+                                NoteCanvas.Height = Math.Max(canvasHeight, 1000);
+                                DrawNotes();
+                            }
+                        };
+                        startFlag = true;
+                        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                        SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {filePath}");
+                        isImport = false;
+
+                    }
+                }
+                catch (Exception) { }
+
+            }
+        }
+
+        private void SaveProjectButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!startFlag)
+            {
+                MessageBox.Show("保存するプロジェクトデータがありません。プロジェクトを作成または、読み込んでください。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if(isImport)
+            {
+                MessageBox.Show("インポートしたものをプロジェクトファイルにすることはできません。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dlg = new SaveFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msdproj" };
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    MyFileIO.SaveToProjectFile(Notes, BPM, music_file_path, dlg.FileName);
+                    IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                    SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {dlg.FileName}");
+                    MessageBox.Show("保存しました", Title, MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception)
+                {
+
+                }
+            }
+
+        }
+
+        private void LoadProjectButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msdproj" };
+            //var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msd" };
+            if (dlg.ShowDialog() == true)
+            {
+                double bpm;
+                try
+                {
+                    //すでに開いている音楽ファイルを解放
+                    if (player != null)
+                    {
+                        player.Close();
+                    }
+
+                    MyFileIO.LoadFromProject(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    //MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    BpmTextBox.Text = bpm.ToString();
+                    if (!string.IsNullOrEmpty(music_file_path))
+                    {
+                        player = new();
+                        player.Open(new Uri(music_file_path));
+                        player.MediaOpened += (s, _) => {
+                            if (player.NaturalDuration.HasTimeSpan)
+                            {
+                                var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
+                                double canvasHeight = TimeToY(duration);
+                                NoteCanvas.Height = Math.Max(canvasHeight, 1000);
+                                DrawNotes();
+                            }
+                        };
+                        startFlag = true;
+                        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                        SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {dlg.FileName}");
+                        isImport = false;
+                    }
+                }
+                catch (Exception) { }
+            }
+
+        }
+
+        private void ExitButton_Click(object sender, RoutedEventArgs e)
+        {
+            this.Close();
         }
 
         /*
@@ -66,20 +209,27 @@ namespace music_editer {
         }
         */
 
-        private void MainWindow_KeyDown(object sender, KeyEventArgs e) {
-            if(!e.IsRepeat & Keyboard.GetKeyStates(Key.Space).HasFlag(KeyStates.Down)) {
-                if(isPlaying) {
+        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (!e.IsRepeat & Keyboard.GetKeyStates(Key.Space).HasFlag(KeyStates.Down))
+            {
+                if (isPlaying)
+                {
                     Music_Stop();
-                }else {
+                }
+                else
+                {
                     Music_Play();
                 }
             }
         }
 
         // 「曲読込」ボタン押下時
-        private void LoadMusic_Click(object sender, RoutedEventArgs e) {
+        private void LoadMusic_Click(object sender, RoutedEventArgs e)
+        {
             var dlg = new OpenFileDialog { Filter = "音楽ファイル|*.mp3;*.wav" };
-            if (dlg.ShowDialog() == true) {
+            if (dlg.ShowDialog() == true)
+            {
                 // BPMが未設定ならポップアップ表示し設定を促す
                 if (!bpmSet)
                 {
@@ -91,6 +241,10 @@ namespace music_editer {
                         BpmTextBox.Text = bpmWindow.BpmValue.Value.ToString();
                         bpmSet = true;
                         BpmTextBox.IsReadOnly = true;   // 一度設定したら編集禁止
+                        startFlag = true;
+                        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                        SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - 新規プロジェクト");
+
                     }
                     else
                     {
@@ -101,8 +255,17 @@ namespace music_editer {
                     }
                 }
 
+                string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ChartEditorTemp");
+                Directory.CreateDirectory(tempFolder);
+
+                string wavfile = System.IO.Path.Combine(tempFolder, "temp.wav");
+                using (var audioReader = new AudioFileReader(dlg.FileName))
+                {
+                    WaveFileWriter.CreateWaveFile(wavfile, audioReader);
+                }
+
                 // 以下コードはセット
-                music_file_path = dlg.FileName;
+                music_file_path = wavfile;
 
                 //すでに開いている音楽ファイルを解放
                 if (player != null)
@@ -113,7 +276,8 @@ namespace music_editer {
                 player = new();
                 player.Open(new Uri(music_file_path));
                 player.MediaOpened += (s, _) => {
-                    if (player.NaturalDuration.HasTimeSpan) {
+                    if (player.NaturalDuration.HasTimeSpan)
+                    {
                         var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
                         double canvasHeight = TimeToY(duration);
                         NoteCanvas.Height = Math.Max(canvasHeight, 1000);
@@ -126,17 +290,19 @@ namespace music_editer {
             }
         }
 
-        private void Music_Play() {
-            if (player.Source == null) return;
+        private void Music_Play()
+        {
+            if (!(player is MediaPlayer p) || p.Source == null) return;
 
             player.Play();
             isPlaying = true;
             renderTimer.Start();
         }
 
-        private void Music_Stop() {
+        private void Music_Stop()
+        {
             // 音楽が読み込まれていない状態では描画しない
-            if (player.Source == null || !player.NaturalDuration.HasTimeSpan)
+            if (!(player is MediaPlayer p) || p.Source == null || !p.NaturalDuration.HasTimeSpan)
                 return;
 
             player.Pause();
@@ -150,23 +316,85 @@ namespace music_editer {
         }
 
         // 「曲再生」ボタン押下時
-        private void Play_Click(object sender, RoutedEventArgs e) {
+        private void Play_Click(object sender, RoutedEventArgs e)
+        {
             Music_Play();
         }
 
         // 「曲停止」ボタン押下時
-        private void Stop_Click(object sender, RoutedEventArgs e) {
+        private void Stop_Click(object sender, RoutedEventArgs e)
+        {
             Music_Stop();
         }
 
+        // 「インポート」ボタン押下時
+        private void ImportMSDFileButton_Click(object sender, RoutedEventArgs e)
+        {
+            //var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msdproj" };
+            MessageBoxResult result = MessageBox.Show("インポートは正常にエクスポートできない可能性があるため非推奨になっています。\nインポートを行いますか？", "譜面エディタ", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+            if(result == MessageBoxResult.No)
+            {
+                return;
+            }
+
+            var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msd" };
+            if (dlg.ShowDialog() == true)
+            {
+                double bpm;
+                try
+                {
+                    //すでに開いている音楽ファイルを解放
+                    if (player != null)
+                    {
+                        player.Close();
+                    }
+
+                    //MyFileIO.LoadFromProject(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    BpmTextBox.Text = bpm.ToString();
+                    if (!string.IsNullOrEmpty(music_file_path))
+                    {
+                        player = new();
+                        player.Open(new Uri(music_file_path));
+                        player.MediaOpened += (s, _) => {
+                            if (player.NaturalDuration.HasTimeSpan)
+                            {
+                                var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
+                                double canvasHeight = TimeToY(duration);
+                                NoteCanvas.Height = Math.Max(canvasHeight, 1000);
+                                DrawNotes();
+                            }
+                        };
+                        startFlag = true;
+                        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                        SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {dlg.FileName}(非推奨)");
+                        isImport = true;
+                    }
+                }
+                catch (Exception) { }
+            }
+        }
+
+
         // 「譜面保存」ボタン押下時
-        private void Save_Click(object sender, RoutedEventArgs e) {
+        private void Save_Click(object sender, RoutedEventArgs e)
+        {
+            if (!startFlag)
+            {
+                MessageBox.Show("エクスポートするデータがありません。プロジェクトを作成または、読み込んでから再度エクスポートしてください。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             var dlg = new SaveFileDialog { Filter = "譜面データ|*.msd" };
-            if (dlg.ShowDialog() == true) {
-                try {
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
                     MyFileIO.SaveToMyFile(Notes, BPM, music_file_path, dlg.FileName);
                     MessageBox.Show("保存しました", Title, MessageBoxButton.OK, MessageBoxImage.Information);
-                }catch (Exception)
+                }
+                catch (Exception)
                 {
 
                 }
@@ -174,14 +402,18 @@ namespace music_editer {
         }
 
         // 「譜面データ読込」ボタン押下時
-        private void Load_Click(object sender, RoutedEventArgs e) {
+        private void Load_Click(object sender, RoutedEventArgs e)
+        {
             var dlg = new OpenFileDialog { Filter = "譜面データ|*.msd" };
-            if (dlg.ShowDialog() == true) {
+            if (dlg.ShowDialog() == true)
+            {
                 double bpm;
-                try {
+                try
+                {
                     MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
                     BpmTextBox.Text = bpm.ToString();
-                    if (!string.IsNullOrEmpty(music_file_path)) {
+                    if (!string.IsNullOrEmpty(music_file_path))
+                    {
                         //すでに開いている音楽ファイルを解放
                         if (player != null)
                         {
@@ -191,7 +423,8 @@ namespace music_editer {
                         player = new();
                         player.Open(new Uri(music_file_path));
                         player.MediaOpened += (s, _) => {
-                            if (player.NaturalDuration.HasTimeSpan) {
+                            if (player.NaturalDuration.HasTimeSpan)
+                            {
                                 var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
                                 double canvasHeight = TimeToY(duration);
                                 NoteCanvas.Height = Math.Max(canvasHeight, 1000);
@@ -199,14 +432,17 @@ namespace music_editer {
                             }
                         };
                     }
-                } catch (Exception) { }
+                }
+                catch (Exception) { }
             }
         }
-        
+
         // ノーツ編集の動作等
-        private void NoteCanvas_MouseDown(object sender, MouseButtonEventArgs e) {
+        private void NoteCanvas_MouseDown(object sender, MouseButtonEventArgs e)
+        {
             // 音楽が読み込まれていない状態では描画しない
-            if (player.Source == null || !player.NaturalDuration.HasTimeSpan) {
+            if (!(player is MediaPlayer p) || p.Source == null || !p.NaturalDuration.HasTimeSpan)
+            {
                 MessageBox.Show("音楽を読み込んでから操作してください。", "エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -216,9 +452,11 @@ namespace music_editer {
             if (lane < 0 || lane > 3) return;
 
             double snappedY = Math.Round(pos.Y / 25.0) * 25.0;
+
             double time = YToTime(snappedY);
 
-            if (e.ChangedButton == MouseButton.Left) {          // マウス左クリックの動作
+            if (e.ChangedButton == MouseButton.Left)
+            {          // マウス左クリックの動作
                 if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
                 {
                     // Shiftキーで再生開始
@@ -244,7 +482,9 @@ namespace music_editer {
                         Notes.Add(new Note { Lane = lane, Time = time });
                     }
                 }
-            } else if (e.ChangedButton == MouseButton.Right) {  // マウス右クリックの動作
+            }
+            else if (e.ChangedButton == MouseButton.Right)
+            {  // マウス右クリックの動作
                 // ノーツ削除
                 Notes.RemoveAll(n =>
                     n.Lane == lane &&
@@ -254,7 +494,8 @@ namespace music_editer {
         }
 
         // 描写用タイマー
-        private void RenderTimer_Tick(object? sender, EventArgs e) {
+        private void RenderTimer_Tick(object? sender, EventArgs e)
+        {
             if (player.NaturalDuration.HasTimeSpan == false) return;
 
             currentMs = player.Position.TotalMilliseconds;
@@ -266,17 +507,20 @@ namespace music_editer {
             DrawNotes(); // offsetYは内部で取得
         }
 
-        private double TimeToY(double timeMs) {
+        private double TimeToY(double timeMs)
+        {
             double beat = (timeMs / 1000.0) * (BPM / 60.0); // ms → beat
             return beat * PixelsPerBeat;
         }
 
-        private double YToTime(double y) {
+        private double YToTime(double y)
+        {
             double beat = y / PixelsPerBeat;
             return (beat * 60.0 / BPM) * 1000.0; // beat → ms
         }
 
-        private void DrawNotes() {
+        private void DrawNotes()
+        {
             NoteCanvas.Children.Clear();
 
             // 音楽が読み込まれていない状態では描画しない
@@ -284,8 +528,10 @@ namespace music_editer {
                 return;
 
             // レーン線
-            for (int i = 0; i < 4; i++) {
-                var laneLine = new Rectangle {
+            for (int i = 0; i < 4; i++)
+            {
+                var laneLine = new Rectangle
+                {
                     Width = 1,
                     Height = NoteCanvas.Height,
                     Fill = Brushes.Gray
@@ -298,11 +544,13 @@ namespace music_editer {
             // 時間目盛り・小節表示
             double beatHeight = PixelsPerBeat;
             double totalBeats = TimeToY(player.NaturalDuration.TimeSpan.TotalMilliseconds) / PixelsPerBeat;
-            for (double beat = 0; beat <= totalBeats; beat++) {
+            for (double beat = 0; beat <= totalBeats; beat++)
+            {
                 double y = beat * beatHeight;
 
                 bool isMeasureLine = ((int)beat % 4 == 0);
-                var line = new Line {
+                var line = new Line
+                {
                     X1 = 0,
                     X2 = NoteCanvas.Width,
                     Y1 = y,
@@ -312,8 +560,10 @@ namespace music_editer {
                 };
                 NoteCanvas.Children.Add(line);
 
-                if (isMeasureLine) {
-                    var text = new TextBlock {
+                if (isMeasureLine)
+                {
+                    var text = new TextBlock
+                    {
                         //Text = $"{(int)(beat * 60_000 / BPM)}ms",
                         Text = $"{(int)(beat / 4)}小節",          //小節表示
                         Foreground = Brushes.Black,
@@ -328,7 +578,8 @@ namespace music_editer {
             }
 
             // ノーツ描画
-            foreach (var note in Notes) {
+            foreach (var note in Notes)
+            {
                 double x = note.Lane * LaneWidth;
                 double y = TimeToY(note.Time);
 
@@ -342,7 +593,8 @@ namespace music_editer {
                     _ => Brushes.Gray // 万一レーンが異常値だったときの保険
                 };
 
-                var rect = new Rectangle {
+                var rect = new Rectangle
+                {
                     Width = 80,
                     Height = 12,
                     Fill = noteColor,
@@ -354,16 +606,19 @@ namespace music_editer {
                 NoteCanvas.Children.Add(rect);
             }
 
-            if (isPlaying) {
+            if (isPlaying)
+            {
                 DrawRedLine();
             }
         }
 
-        private double YToBeat(double y) {
+        private double YToBeat(double y)
+        {
             return y / PixelsPerBeat;
         }
 
-        private void DrawRedLine() {
+        private void DrawRedLine()
+        {
             RedLineCanvas.Children.Clear();
 
             double canvasWidth = NoteCanvas.Width;
@@ -381,10 +636,13 @@ namespace music_editer {
 
             double redLineY;
 
-            if (playY < centerY) {
+            if (playY < centerY)
+            {
                 // 譜面の再生位置が中央より上
                 redLineY = playY - verticalOffset;
-            } else {
+            }
+            else
+            {
                 // 赤線は画面中央に固定
                 redLineY = viewportHeight / 2;
             }
@@ -393,8 +651,9 @@ namespace music_editer {
             if (redLineY < 0) redLineY = 0;
             if (redLineY > viewportHeight) redLineY = viewportHeight;
 
-            var redLine = new Line {
-                X1 = 0,
+            var redLine = new Line
+            {
+                X1 = -8,
                 X2 = canvasWidth,
                 Y1 = redLineY,
                 Y2 = redLineY,
@@ -410,23 +669,9 @@ namespace music_editer {
         {
             string exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
             string processPath = Environment.ProcessPath;
+            string arguments = "--register-url-protocol";
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = processPath,
-                Arguments = "--register-url-protocol",
-                UseShellExecute = true,
-                Verb = "runas" // 管理者権限で実行
-            };
-
-            try
-            {
-                Process.Start(psi);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("管理者権限での起動に失敗しました。\n" + ex.Message);
-            }
+            UrlScheme.StartProcessAsAdmin(processPath, arguments);
         }
     }
 }
