@@ -19,12 +19,14 @@ using music_editer.Api;
 using NAudio.Wave;
 using NAudio.Utils;
 using System.IO;
+using System.Text.RegularExpressions;
+using static music_editer.Utils.MyFileIO;
 
 namespace music_editer
 {
     public partial class MainWindow : Window
     {
-        private List<Note> Notes = new();
+        private List<Note>? Notes = new();
         private MediaPlayer player;
         private string? music_file_path = null;
         private DispatcherTimer renderTimer = new();
@@ -33,6 +35,16 @@ namespace music_editer
         private double currentMs;
 
         private double BPM => double.TryParse(BpmTextBox.Text, out var bpm) ? bpm : 120;
+        private decimal TravelTime {
+            get
+            {
+                return decimal.TryParse(TravelTimeBox.Text, out var travelTime) ? travelTime : 3.0m;
+            }
+            set
+            {
+                value = decimal.TryParse(TravelTimeBox.Text, out var travelTime) ? travelTime : 3.0m;
+            }
+        }
         private bool bpmSet = false;    // BPM設定済みかどうか
         private const double PixelsPerBeat = 400.0 / 4.0;
         private const int LaneWidth = 120;
@@ -57,6 +69,7 @@ namespace music_editer
             SaveProjectButton.Click += SaveProjectButton_Click;
             LoadProjectButton.Click += LoadProjectButton_Click;
             importMSDFileButton.Click += ImportMSDFileButton_Click;
+            LoadLegacyProjectButton.Click += LoadLegacyProjectButton_Click;
             ExportMSDFileButton.Click += Save_Click;
             ExitButton.Click += ExitButton_Click;
             Loaded += MainWindow_Loaded;
@@ -74,16 +87,26 @@ namespace music_editer
             };
         }
 
+
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             if (filePath != null)
             {
-                double bpm;
+                MyFileIO.ChartStatus? chartStatus = new MyFileIO.ChartStatus();
                 try
                 {
-                    MyFileIO.LoadFromProject(filePath, out Notes, out bpm, out music_file_path);
+                    MyFileIO.LoadFromProject(filePath, out Notes, out chartStatus, out music_file_path);
+                    
+                    if(chartStatus == null)
+                    {
+                        MessageBox.Show("データの読み込みに失敗しました。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+                    double bpm = chartStatus.BPM;
+                    decimal travelTime = chartStatus.TravelTime;
 
                     BpmTextBox.Text = bpm.ToString();
+                    TravelTimeBox.Text = travelTime.ToString();
                     if (!string.IsNullOrEmpty(music_file_path))
                     {
                         //すでに開いている音楽ファイルを解放
@@ -134,7 +157,10 @@ namespace music_editer
             {
                 try
                 {
-                    MyFileIO.SaveToProjectFile(Notes, BPM, music_file_path, dlg.FileName);
+                    MyFileIO.ChartStatus chartStatus = new MyFileIO.ChartStatus();
+                    chartStatus.BPM = BPM;
+                    chartStatus.TravelTime = TravelTime;
+                    MyFileIO.SaveToProjectFile(Notes, chartStatus, music_file_path, dlg.FileName);
                     IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
                     SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {dlg.FileName}");
                     MessageBox.Show("保存しました", Title, MessageBoxButton.OK, MessageBoxImage.Information);
@@ -153,7 +179,7 @@ namespace music_editer
             //var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msd" };
             if (dlg.ShowDialog() == true)
             {
-                double bpm;
+                MyFileIO.ChartStatus? chartStatus = new MyFileIO.ChartStatus();
                 try
                 {
                     //すでに開いている音楽ファイルを解放
@@ -162,9 +188,19 @@ namespace music_editer
                         player.Close();
                     }
 
-                    MyFileIO.LoadFromProject(dlg.FileName, out Notes, out bpm, out music_file_path);
-                    //MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    MyFileIO.LoadFromProject(dlg.FileName, out Notes, out chartStatus, out music_file_path);
+
+                    if (chartStatus == null)
+                    {
+                        MessageBox.Show("データの読み込みに失敗しました。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+                    double bpm = chartStatus.BPM;
+                    decimal travelTime = chartStatus.TravelTime;
+
                     BpmTextBox.Text = bpm.ToString();
+                    TravelTimeBox.Text = travelTime.ToString();
+
                     if (!string.IsNullOrEmpty(music_file_path))
                     {
                         player = new();
@@ -351,7 +387,7 @@ namespace music_editer
                     }
 
                     //MyFileIO.LoadFromProject(dlg.FileName, out Notes, out bpm, out music_file_path);
-                    MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    MyFileIO.LegacyLoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
                     BpmTextBox.Text = bpm.ToString();
                     if (!string.IsNullOrEmpty(music_file_path))
                     {
@@ -376,6 +412,55 @@ namespace music_editer
             }
         }
 
+        // 「旧プロジェクト読み込み」ボタン押下時
+        private void LoadLegacyProjectButton_Click(object sender, RoutedEventArgs e)
+        {
+            MessageBoxResult result = MessageBox.Show("旧プロジェクトデータは正常に読み込みまたは保存できない可能性があるため非推奨になっています。\n旧プロジェクトデータを読み込みますか？", "譜面エディタ", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (result == MessageBoxResult.No)
+            {
+                return;
+            }
+
+            var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msdproj" };
+            //var dlg = new OpenFileDialog { Filter = "譜面エディタプロジェクトデータ|*.msd" };
+            if (dlg.ShowDialog() == true)
+            {
+                double bpm;
+                try
+                {
+                    //すでに開いている音楽ファイルを解放
+                    if (player != null)
+                    {
+                        player.Close();
+                    }
+
+                    MyFileIO.LegacyLoadFromProject(dlg.FileName, out Notes, out bpm, out music_file_path);
+
+                    BpmTextBox.Text = bpm.ToString();
+
+                    if (!string.IsNullOrEmpty(music_file_path))
+                    {
+                        player = new();
+                        player.Open(new Uri(music_file_path));
+                        player.MediaOpened += (s, _) => {
+                            if (player.NaturalDuration.HasTimeSpan)
+                            {
+                                var duration = player.NaturalDuration.TimeSpan.TotalMilliseconds;
+                                double canvasHeight = TimeToY(duration);
+                                NoteCanvas.Height = Math.Max(canvasHeight, 1000);
+                                DrawNotes();
+                            }
+                        };
+                        startFlag = true;
+                        IntPtr hWnd = Process.GetCurrentProcess().MainWindowHandle;
+                        SetWindowText_W.SetWindowText(hWnd, $"{this.Title} - {dlg.FileName}");
+                        isImport = false;
+                    }
+                }
+                catch (Exception) { }
+            }
+
+        }
 
         // 「譜面保存」ボタン押下時
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -391,7 +476,10 @@ namespace music_editer
             {
                 try
                 {
-                    MyFileIO.SaveToMyFile(Notes, BPM, music_file_path, dlg.FileName);
+                    MyFileIO.ChartStatus chartStatus = new MyFileIO.ChartStatus();
+                    chartStatus.BPM = BPM;
+                    chartStatus.TravelTime = TravelTime;
+                    MyFileIO.SaveToMyFile(Notes, chartStatus, music_file_path, dlg.FileName);
                     MessageBox.Show("保存しました", Title, MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception)
@@ -410,7 +498,7 @@ namespace music_editer
                 double bpm;
                 try
                 {
-                    MyFileIO.LoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
+                    MyFileIO.LegacyLoadFromZipToString(dlg.FileName, out Notes, out bpm, out music_file_path);
                     BpmTextBox.Text = bpm.ToString();
                     if (!string.IsNullOrEmpty(music_file_path))
                     {
@@ -672,6 +760,13 @@ namespace music_editer
             string arguments = "--register-url-protocol";
 
             UrlScheme.StartProcessAsAdmin(processPath, arguments);
+        }
+
+        private void TravelTimeBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            Regex regex = new Regex("[^0-9.]+");
+            var text = TravelTimeBox.Text + e.Text;
+            e.Handled = regex.IsMatch(text);
         }
     }
 }

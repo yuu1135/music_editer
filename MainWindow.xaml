@@ -15,6 +15,7 @@
                 <MenuItem Name="LoadProjectButton" Header="プロジェクトを読み込む"/>
                 <MenuItem Header="インポート（非推奨）">
                     <MenuItem Name="importMSDFileButton" Header="MSDファイルとしてインポート(非推奨)"/>
+                    <MenuItem Name="LoadLegacyProjectButton" Header="旧プロジェクトファイルを読み込む(非推奨)"/>
                 </MenuItem>
                 <MenuItem Name="ExportMSDFileButton" Header="MSDファイルとしてエクスポート"/>
                 <Separator/>
@@ -27,7 +28,7 @@
 
         <DockPanel Grid.Row="1">
             <!-- 上部コントロール -->
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Height="45" Width="250" Margin="5">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Height="45" Width="400" Margin="5">
                 <Button Content="曲読み込み" FontSize="18" Click="LoadMusic_Click" Margin="5" Visibility="Collapsed"/>
                 <Button Content="曲再生" FontSize="18" Click="Play_Click" Margin="5"/>
                 <Button Content="曲停止" FontSize="18" Click="Stop_Click" Margin="5"/>
@@ -36,6 +37,8 @@
 
                 <TextBlock Text="BPM:" FontSize="18" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Black"/>
                 <TextBox x:Name="BpmTextBox" Text="120" FontSize="18" Width="50" Margin="5" VerticalAlignment="Center" IsReadOnly="True"/>
+                <TextBlock Text="譜面速度:" FontSize="18" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="Black"/>
+                <TextBox x:Name="TravelTimeBox" Text="3.0" FontSize="18" Width="50" Margin="5" VerticalAlignment="Center" PreviewTextInput="TravelTimeBox_PreviewTextInput"/>
 
                 <Button Content="スキームの設定" FontSize="18" Click="Scheme_Click" Margin="5" Visibility="Hidden"/>
 

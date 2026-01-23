@@ -10,10 +10,18 @@ using System.Net.Http.Json;
 
 using music_editer.Models;
 using NAudio.Wave;
+using static music_editer.Utils.MyFileIO;
+using System.Windows;
 
 namespace music_editer.Utils {
     internal class MyFileIO {
-        public static void SaveToProjectFile(List<Note> notes, double bpm, string audioPath, string myfilePath)
+        public class ChartStatus
+        {
+            public double BPM { get; set; }
+            public decimal TravelTime { get; set; }
+        }
+
+        public static void SaveToProjectFile(List<Note> notes, ChartStatus chartStatus, string audioPath, string myfilePath)
         {
             using (FileStream zipToOpen = new FileStream(myfilePath, FileMode.Create))
             {
@@ -29,10 +37,10 @@ namespace music_editer.Utils {
 
                     // JSONをZIP内にchart.jsonという名前で追加
                     var jsonEntry2 = archive.CreateEntry("chartstatus.json");
-                    var bpmJson = JsonSerializer.Serialize(bpm);
+                    var charStatusJson = JsonSerializer.Serialize(chartStatus);
                     using (var writer = new StreamWriter(jsonEntry2.Open()))
                     {
-                        writer.Write(bpmJson);
+                        writer.Write(charStatusJson);
                     }
 
                     // JSONをZIP内にmusicpath.jsonという名前で追加
@@ -47,7 +55,183 @@ namespace music_editer.Utils {
 
         }
 
-        public static void LoadFromProject(string zipPath, out List<Note> jsonContent, out double bpm, out string? audioPath)
+        public static void LoadFromProject(string zipPath, out List<Note>? jsonContent, out ChartStatus? chartStatus, out string? audioPath)
+        {
+            string tempFolder = Path.Combine(Path.GetTempPath(), "ChartEditorTemp");
+            Directory.CreateDirectory(tempFolder);
+
+            jsonContent = null;
+            chartStatus = null;
+            audioPath = null;
+
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (var entry in archive.Entries)
+                {
+                    string destinationPath = Path.Combine(tempFolder, entry.Name);
+
+                    if (entry.Name == "chart.json")
+                    {
+                        using (var reader = new StreamReader(entry.Open()))
+                        {
+                            var json = reader.ReadToEnd();
+                            jsonContent = JsonSerializer.Deserialize<List<Note>>(json) ?? new List<Note>();
+                        }
+
+                    }
+                    else if (entry.Name == "chartstatus.json")
+                    {
+                        using (var reader = new StreamReader(entry.Open()))
+                        {
+                            var json = reader.ReadToEnd();
+                            try
+                            {
+                                chartStatus = JsonSerializer.Deserialize<ChartStatus>(json);
+                            }catch(Exception ex)
+                            {
+                                MessageBox.Show("旧プロジェクトデータまたはデータが壊れているため、正しく読み込めませんでした。", "譜面エディタ", MessageBoxButton.OK, MessageBoxImage.Error);
+                                throw new System.Text.Json.JsonException();
+                            }
+                        }
+
+                    }
+                    else if(entry.Name == "musicpath.json")
+                    {
+                        using(var reader = new StreamReader(entry.Open()))
+                        {
+                            var json = reader.ReadToEnd();
+                            string? path = JsonSerializer.Deserialize<string?>(json);
+
+                            string wavfile = Path.Combine(tempFolder, $"{DateTime.Now.ToString("yyyyMMddHHmmss")}.wav");
+                            using (var audioReader = new AudioFileReader(path))
+                            {
+                                WaveFileWriter.CreateWaveFile(wavfile, audioReader);
+                                audioPath = wavfile;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (jsonContent == null)
+                throw new Exception("ZIPファイルに必要なファイル（JSONまたは音声）が見つかりません。");
+
+        }
+
+        public static void SaveToMyFile(List<Note> notes, ChartStatus chartStatus, string audioPath, string myfilePath) {
+            using (FileStream zipToOpen = new FileStream(myfilePath, FileMode.Create)) {
+                using (ZipArchive archive = new ZipArchive(zipToOpen, ZipArchiveMode.Create)) {
+                    // JSONをZIP内にchart.jsonという名前で追加
+                    var jsonEntry = archive.CreateEntry("chart.json");
+                    var json = JsonSerializer.Serialize(notes, new JsonSerializerOptions { WriteIndented = true });
+                    using (var writer = new StreamWriter(jsonEntry.Open())) {
+                        writer.Write(json);
+                    }
+
+                    // JSONをZIP内にchart.jsonという名前で追加
+                    var jsonEntry2 = archive.CreateEntry("chartstatus.json");
+                    var charStatusJson = JsonSerializer.Serialize(chartStatus);
+                    using (var writer = new StreamWriter(jsonEntry2.Open()))
+                    {
+                        writer.Write(charStatusJson);
+                    }
+
+                    // 音楽ファイルを追加（拡張子そのまま）
+                    string audioFileName = Path.GetFileName(audioPath);
+                    archive.CreateEntryFromFile(audioPath, audioFileName);
+                }
+            }
+        }
+
+        public static void LoadFromZipToString(string zipPath, out List<Note>? jsonContent, out ChartStatus? chartStatus, out string? audioTempPath) {
+            string tempFolder = Path.Combine(Path.GetTempPath(), "ChartEditorTemp");
+            Directory.CreateDirectory(tempFolder);
+
+            jsonContent = null;
+            chartStatus = null;
+            audioTempPath = null;
+            
+
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath)) {
+                foreach (var entry in archive.Entries) {
+                    string destinationPath = Path.Combine(tempFolder, entry.Name);
+
+                    if (entry.Name == "chart.json") {
+                        using (var reader = new StreamReader(entry.Open())) {
+                            var json = reader.ReadToEnd();
+                            jsonContent = JsonSerializer.Deserialize<List<Note>>(json) ?? new List<Note>();
+                        }
+
+                    } else if (entry.Name == "chartstatus.json") {
+                        using (var reader = new StreamReader(entry.Open())) {
+                            var json = reader.ReadToEnd();
+                            chartStatus = JsonSerializer.Deserialize<ChartStatus>(json);
+                        }
+
+                    } else if (entry.Name.ToLower().EndsWith(".mp3") || entry.Name.ToLower().EndsWith(".wav")) {
+                        entry.ExtractToFile(destinationPath, true);
+                        audioTempPath = destinationPath;
+                    }
+                }
+            }
+
+            if (jsonContent == null || audioTempPath == null)
+                throw new Exception("ZIPファイルに必要なファイル（JSONまたは音声）が見つかりません。");
+        }
+
+
+        //------------------------------------------------
+        //         Legacy関数
+        //------------------------------------------------
+        [Obsolete("Legacyになったため非推奨", false)]
+        public static void LegacyLoadFromZipToString(string zipPath, out List<Note> jsonContent, out double bpm, out string audioTempPath)
+        {
+            string tempFolder = Path.Combine(Path.GetTempPath(), "ChartEditorTemp");
+            Directory.CreateDirectory(tempFolder);
+
+            jsonContent = null;
+            bpm = 120;
+            audioTempPath = null;
+
+
+            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (var entry in archive.Entries)
+                {
+                    string destinationPath = Path.Combine(tempFolder, entry.Name);
+
+                    if (entry.Name == "chart.json")
+                    {
+                        using (var reader = new StreamReader(entry.Open()))
+                        {
+                            var json = reader.ReadToEnd();
+                            jsonContent = JsonSerializer.Deserialize<List<Note>>(json) ?? new List<Note>();
+                        }
+
+                    }
+                    else if (entry.Name == "chartstatus.json")
+                    {
+                        using (var reader = new StreamReader(entry.Open()))
+                        {
+                            var json = reader.ReadToEnd();
+                            bpm = JsonSerializer.Deserialize<double>(json);
+                        }
+
+                    }
+                    else if (entry.Name.ToLower().EndsWith(".mp3") || entry.Name.ToLower().EndsWith(".wav"))
+                    {
+                        entry.ExtractToFile(destinationPath, true);
+                        audioTempPath = destinationPath;
+                    }
+                }
+            }
+
+            if (jsonContent == null || audioTempPath == null)
+                throw new Exception("ZIPファイルに必要なファイル（JSONまたは音声）が見つかりません。");
+        }
+
+        [Obsolete("Legacyになったため非推奨", false)]
+        public static void LegacyLoadFromProject(string zipPath, out List<Note> jsonContent, out double bpm, out string? audioPath)
         {
             string tempFolder = Path.Combine(Path.GetTempPath(), "ChartEditorTemp");
             Directory.CreateDirectory(tempFolder);
@@ -81,9 +265,9 @@ namespace music_editer.Utils {
                         }
 
                     }
-                    else if(entry.Name == "musicpath.json")
+                    else if (entry.Name == "musicpath.json")
                     {
-                        using(var reader = new StreamReader(entry.Open()))
+                        using (var reader = new StreamReader(entry.Open()))
                         {
                             var json = reader.ReadToEnd();
                             string? path = JsonSerializer.Deserialize<string?>(json);
@@ -104,65 +288,5 @@ namespace music_editer.Utils {
 
         }
 
-        public static void SaveToMyFile(List<Note> notes, double bpm, string audioPath, string myfilePath) {
-            using (FileStream zipToOpen = new FileStream(myfilePath, FileMode.Create)) {
-                using (ZipArchive archive = new ZipArchive(zipToOpen, ZipArchiveMode.Create)) {
-                    // JSONをZIP内にchart.jsonという名前で追加
-                    var jsonEntry = archive.CreateEntry("chart.json");
-                    var json = JsonSerializer.Serialize(notes, new JsonSerializerOptions { WriteIndented = true });
-                    using (var writer = new StreamWriter(jsonEntry.Open())) {
-                        writer.Write(json);
-                    }
-
-                    // JSONをZIP内にchart.jsonという名前で追加
-                    var jsonEntry2 = archive.CreateEntry("chartstatus.json");
-                    var json2 = JsonSerializer.Serialize(bpm);
-                    using (var writer = new StreamWriter(jsonEntry2.Open())) {
-                        writer.Write(json2);
-                    }
-
-
-                    // 音楽ファイルを追加（拡張子そのまま）
-                    string audioFileName = Path.GetFileName(audioPath);
-                    archive.CreateEntryFromFile(audioPath, audioFileName);
-                }
-            }
-        }
-
-        public static void LoadFromZipToString(string zipPath, out List<Note> jsonContent, out double bpm, out string audioTempPath) {
-            string tempFolder = Path.Combine(Path.GetTempPath(), "ChartEditorTemp");
-            Directory.CreateDirectory(tempFolder);
-
-            jsonContent = null;
-            bpm = 120;
-            audioTempPath = null;
-            
-
-            using (ZipArchive archive = ZipFile.OpenRead(zipPath)) {
-                foreach (var entry in archive.Entries) {
-                    string destinationPath = Path.Combine(tempFolder, entry.Name);
-
-                    if (entry.Name == "chart.json") {
-                        using (var reader = new StreamReader(entry.Open())) {
-                            var json = reader.ReadToEnd();
-                            jsonContent = JsonSerializer.Deserialize<List<Note>>(json) ?? new List<Note>();
-                        }
-
-                    } else if (entry.Name == "chartstatus.json") {
-                        using (var reader = new StreamReader(entry.Open())) {
-                            var json = reader.ReadToEnd();
-                            bpm = JsonSerializer.Deserialize<double>(json);
-                        }
-
-                    } else if (entry.Name.ToLower().EndsWith(".mp3") || entry.Name.ToLower().EndsWith(".wav")) {
-                        entry.ExtractToFile(destinationPath, true);
-                        audioTempPath = destinationPath;
-                    }
-                }
-            }
-
-            if (jsonContent == null || audioTempPath == null)
-                throw new Exception("ZIPファイルに必要なファイル（JSONまたは音声）が見つかりません。");
-        }
     }
 }
